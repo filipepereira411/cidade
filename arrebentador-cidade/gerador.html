@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>Simulador de Cidade Realista (HTML5)</title>
+    <style>
+        body {
+            background-color: #1a1a24;
+            color: #e0e0e6;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 { margin-bottom: 5px; color: #4facfe; }
+        .painel-recursos {
+            display: flex;
+            gap: 20px;
+            background: #252538;
+            padding: 15px 30px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .recurso { display: flex; align-items: center; gap: 8px; }
+        .menu-construcao {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .btn-ferramenta {
+            background: #2d2d44;
+            color: #fff;
+            border: 2px solid #3d3d5c;
+            padding: 10px 20px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: 0.2s;
+        }
+        .btn-ferramenta:hover { background: #3d3d5c; }
+        .btn-ferramenta.ativo {
+            background: #4facfe;
+            border-color: #00f2fe;
+            color: #000;
+            font-weight: bold;
+        }
+        /* Grelha da Cidade */
+        #grelha-cidade {
+            display: grid;
+            grid-template-columns: repeat(15, 40px);
+            grid-template-rows: repeat(15, 40px);
+            gap: 1px;
+            background-color: #333;
+            border: 4px solid #222;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+        }
+        .lote {
+            background-color: #448044; /* Relva base */
+            cursor: pointer;
+            transition: 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            user-select: none;
+        }
+        .lote:hover { filter: brightness(1.2); }
+        /* Cores das Estruturas */
+        .lote.estrada { background-color: #444; border-radius: 0; box-shadow: inset 0 0 5px #222; }
+        .lote.residencial { background-color: #3b7a57; border: 2px solid #50a376; } /* Verde escuro */
+        .lote.comercial { background-color: #3b5998; border: 2px solid #4f77d4; } /* Azul */
+        .lote.industrial { background-color: #b8860b; border: 2px solid #daa520; } /* Amarelo/Castanho */
+        .lote.parque { background-color: #2e8b57; border-radius: 50%; }
+    </style>
+</head>
+<body>
+
+    <h1>SimCity HTML5</h1>
+    <p style="margin-top: 0; color: #888;">Selecione uma ferramenta e clique no terreno para urbanizar.</p>
+
+    <!-- Indicadores Financeiros e Demográficos -->
+    <div class="painel-recursos">
+        <div class="recurso">💰 Orçamento: <span id="txt-dinheiro">10000</span>€</div>
+        <div class="recurso">👥 População: <span id="txt-populacao">0</span></div>
+        <div class="recurso">🏢 Empregos: <span id="txt-empregos">0</span></div>
+    </div>
+
+    <!-- Ferramentas de Construção -->
+    <div class="menu-construcao">
+        <button class="btn-ferramenta ativo" onclick="mudarFerramenta('estrada', this)">🛣️ Estrada (50€)</button>
+        <button class="btn-ferramenta" onclick="mudarFerramenta('residencial', this)">🏠 Zona Residencial (100€)</button>
+        <button class="btn-ferramenta" onclick="mudarFerramenta('comercial', this)">🏢 Zona Comercial (150€)</button>
+        <button class="btn-ferramenta" onclick="mudarFerramenta('industrial', this)">🏭 Zona Industrial (200€)</button>
+        <button class="btn-ferramenta" onclick="mudarFerramenta('demolir', this)">🚜 Demolir (20€)</button>
+    </div>
+
+    <!-- Tabuleiro do Jogo -->
+    <div id="grelha-cidade"></div>
+
+<script>
+    // Configurações e Estado Inicial do Jogo
+    let dinheiro = 10000;
+    let populacao = 0;
+    let empregos = 0;
+    let ferramentaAtual = 'estrada';
+    const tamanhoGrelha = 15;
+    const mapa = [];
+
+    // Preços das construções
+    const custos = { estrada: 50, residencial: 100, comercial: 150, industrial: 200, demolir: 20 };
+
+    const grelhaElemento = document.getElementById('grelha-cidade');
+
+    // Inicializar o Tabuleiro 15x15
+    for (let r = 0; r < tamanhoGrelha; r++) {
+        for (let c = 0; c < tamanhoGrelha; c++) {
+            const lote = document.createElement('div');
+            lote.classList.add('lote');
+            lote.dataset.row = r;
+            lote.dataset.col = c;
+            lote.onclick = () => clicarNoLote(r, c, lote);
+            grelhaElemento.appendChild(lote);
+            mapa.push({ row: r, col: c, tipo: 'vazio', elemento: lote });
+        }
+    }
+
+    // Alterar ferramenta ativa
+    function mudarFerramenta(tipo, botao) {
+        ferramentaAtual = tipo;
+        document.querySelectorAll('.btn-ferramenta').forEach(b => b.classList.remove('ativo'));
+        botao.classList.add('ativo');
+    }
+
+    // Lógica ao clicar num quadrado do mapa
+    function clicarNoLote(r, c, elemento) {
+        const loteDados = mapa.find(l => l.row === r && l.col === c);
+        const custo = custos[ferramentaAtual];
+
+        if (ferramentaAtual === 'demolir') {
+            if (loteDados.tipo !== 'vazio' && dinheiro >= custo) {
+                dinheiro -= custo;
+                loteDados.tipo = 'vazio';
+                elemento.className = 'lote';
+                elemento.innerText = '';
+            }
+        } else {
+            if (loteDados.tipo === 'vazio' && dinheiro >= custo) {
+                dinheiro -= custo;
+                loteDados.tipo = ferramentaAtual;
+                elemento.classList.add(ferramentaAtual);
+                
+                // Adiciona um mini-ícone visual descritivo
+                if(ferramentaAtual === 'residencial') elemento.innerText = '🏠';
+                if(ferramentaAtual === 'comercial') elemento.innerText = '🏢';
+                if(ferramentaAtual === 'industrial') elemento.innerText = '🏭';
+            }
+        }
+        atualizarInterface();
+    }
+
+    // Atualiza os textos do ecrã
+    function atualizarInterface() {
+        document.getElementById('txt-dinheiro').innerText = dinheiro;
+        document.getElementById('txt-populacao').innerText = populacao;
+        document.getElementById('txt-empregos').innerText = empregos;
+    }
+
+    // Ciclo de Simulação em Tempo Real (Loop de Economia)
+    setInterval(() => {
+        let contagemResidencial = mapa.filter(l => l.tipo === 'residencial').length;
+        let contagemComercial = mapa.filter(l => l.tipo === 'comercial').length;
+        let contagemIndustrial = mapa.filter(l => l.tipo === 'industrial').length;
+        let contagemEstradas = mapa.filter(l => l.tipo === 'estrada').length;
+
+        // Se houver estradas ligando a infraestrutura, a população cresce
+        if (contagemEstradas > 0) {
+            populacao = contagemResidencial * 12;
+            empregos = (contagemComercial * 8) + (contagemIndustrial * 15);
+            
+            // Impostos gerados pela cidade (Receita passiva)
+            let impostos = (populacao * 2) + (empregos * 3);
+            dinheiro += impostos;
+        } else {
+            // Sem estradas ninguém consegue morar ou trabalhar
+            populacao = 0;
+            empregos = 0;
+        }
+
+        atualizarInterface();
+    }, 3000); // Roda a cada 3 segundos
+</script>
+
+</body>
+</html>
